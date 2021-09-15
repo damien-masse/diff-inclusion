@@ -1,0 +1,5 @@
+dim := 2
+timedependent := y
+time := [0,30]
+function := (x,y) : (1/(1+t*t),1+x-atan(t))
+nbsteps := 500

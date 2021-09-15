@@ -1,0 +1,5 @@
+dim := 2
+timedependent := n
+time := [0,15]
+function := (x,y) : (-0.1*x-y,-0.1*y+x)
+nbsteps := 200

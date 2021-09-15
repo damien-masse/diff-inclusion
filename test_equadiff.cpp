@@ -70,7 +70,6 @@ int main(int argc, char *argv[]) {
     sprintf(name,"%s-rec",argv[1]);
     inpf.open(name);
     parse_command(argv[1],diffincl,inpf);
-    std::cout << "P4\n";
  
 /*    TFunction *fun = new TFunction("x","y","(y+[-0.001,0.001],-x+[-0.001,0.001])");
     Interval time(0.0,10.0); 

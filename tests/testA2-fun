@@ -1,0 +1,5 @@
+dim := 2
+timedependent := y
+time := [0,5]
+function := (x,y) : (y,(1-x^2)*y-x+2.0*cos(2.0*t)+[-0.0001,0.0001])
+nbsteps := 4096

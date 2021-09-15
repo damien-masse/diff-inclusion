@@ -1,0 +1,5 @@
+dim := 2
+timedependent := y
+time := [0,6.28318]
+function := (x,y) : (t,sin(t))
+nbsteps := 128

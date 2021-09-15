@@ -1,0 +1,5 @@
+dim := 2
+timedependent := n
+time := [0,3.14159265358979]
+function := (x,y) : (-y+[-0.001,0.001],x+[-0.001,0.001])
+nbsteps := 100
