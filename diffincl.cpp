@@ -11,6 +11,7 @@
 #include "expIMat.h"
 #include "vibes.h"
 #include "diffincl.h"
+#include "IVdouble.h"
 
 using namespace codac;
 
@@ -299,11 +300,12 @@ namespace diffincl {
        double tsteps = cst_tsteps;
        double inflation_f = default_inflation_factor;
   
-       IntervalVector Cent(X0.mid());
-       const IntervalVector X0c = X0-Cent; // centered "initial" place
+       IVdouble actStates(X0); // actuel set of states
+//       IntervalVector Cent(X0.mid());
+//       const IntervalVector X0c = X0-Cent; // centered "initial" place
        const Matrix Id = Matrix::eye(dim);
-       IntervalMatrix prodExpM(Id); // products of exponential
-       IntervalVector Xbox(X0); // recomputed box
+//       IntervalMatrix prodExpM(Id); // products of exponential
+       IntervalVector Xbox(X0); // recomputed box (= actStates.bounding_box())
 
        // result
        TubeVector Result(time,frame);
@@ -340,11 +342,10 @@ namespace diffincl {
            } 
 
 	   // domain at the new time
-	   Cent = center_Approxbox + ExpM*(Cent-center_Approxbox) + evolCenter;
-	   prodExpM = ExpM * prodExpM;
+	   actStates.cmult_and_add(center_Approxbox,ExpM, evolCenter);
            oldtime=currenttime;
 	   // Computation of Xbox (for the tube)
-           Xbox = Cent + prodExpM * X0c ;
+           Xbox = actStates.bounding_box();
 	   Xbox &= frame;
            if (debug_level>=1) 
               std::cerr << "time : " << currenttime 
