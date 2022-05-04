@@ -1,0 +1,5 @@
+dim := 2
+timedependent := n
+time := [0,1.5]
+function := (x,y) : (y,-2.0*sin(x)-y+0.03*cos(x))
+nbsteps := 2048
