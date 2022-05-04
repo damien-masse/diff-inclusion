@@ -188,13 +188,24 @@ namespace diffincl {
         bbox[d] = val-v1;
         
         IVparals ivInter(*this, bbox);
+        IntervalMatrix mId(dim,dim);
+        mId = (Matrix::eye(dim) + Tau*M);
+        ivInter.rhs[this->nbmat] &= mId*(iv.rhs[this->nbmat] + iv.center)
+			+ Tau * (V-M*center)
+			- ivInter.center;
+        if (ivInter.rhs[this->nbmat].is_empty()) return false;
         for (int j=0;j<iv.nbmat;j++) {
             IntervalVector tmpVect= iv.mats[j]*iv.rhs[j] + iv.center;
-            ivInter.rhs[this->nbmat] &= tmpVect
-			+ Tau * (M * (tmpVect - center)+V)
+            ivInter.rhs[this->nbmat] &= mId*tmpVect
+			+ Tau * (V-M*center)
 			- ivInter.center;
             if (ivInter.rhs[this->nbmat].is_empty()) return false;
+            ivInter.rhs[j] &= (ivInter.Imats[j]*mId*ivInter.mats[j])*iv.rhs[j]
+			+ (ivInter.Imats[j]*mId)*iv.center
+			+ ivInter.Imats[j]*(Tau*(V-M*center) - ivInter.center);
+            if (ivInter.rhs[j].is_empty()) return false;
         }
+/*
         for (int i=0;i<this->nbmat;i++) {
             IntervalVector Vi(ivInter.Imats[i]*V);
             for (int j=0;j<iv.nbmat;j++) {
@@ -206,7 +217,7 @@ namespace diffincl {
                 if (ivInter.rhs[i].is_empty()) return false;
             }
         }
-
+*/
         ivInter.simplify(true);
         if (ivInter.is_empty()) return false;
         if (this->is_empty()) {
