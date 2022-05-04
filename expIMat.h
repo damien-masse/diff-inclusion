@@ -199,6 +199,7 @@ void global_exp_base(const IntervalMatrix& A,
 *  Input : matrix M, time t, 
 *  Compute simultaneously 
 *     a) exp(Mt)  (expM)
+*     a') exp(-Mt) (invExpM)
 *     b) { 1/a (exp(a t M) - Id), a \in [0,1] }  ( tauExpM )
 *     c) int_0^t exp(tau M) dtau  (IexpM)
 *     d) { 1/a int_0^(at) exp(tau M) dtau, a \in [0,1] }
@@ -210,6 +211,7 @@ void global_exp_base(const IntervalMatrix& A,
 void global_exp(const IntervalMatrix& M,
           double tim, bool with_slices, bool with_time,
           IntervalMatrix& expM,
+	  IntervalMatrix& invExpM,
           IntervalMatrix& tauExpM,
           IntervalMatrix& IexpM,
           IntervalMatrix& tauIexpM,

@@ -6,12 +6,16 @@
 #include <codac.h>
 #include <iostream>
 #include <vector>
+#include <array>
 #include <cstdio>
 #include <cstring>
 #include "expIMat.h"
 #include "vibes.h"
 #include "diffincl.h"
 #include "IVdouble.h"
+#include "IVparals.h"
+
+#define USE_IVPARALS	1
 
 using namespace codac;
 
@@ -20,7 +24,7 @@ namespace diffincl {
   DiffInclusion::DiffInclusion(unsigned int dim,
                       const TFunction* tfun,
                       Interval& time, unsigned int nbsteps) :
-       dim(dim), tfun(tfun),
+       dim(dim), tfun(tfun), fun(NULL),
        time(time), nbsteps(nbsteps) {
        this->time_dependent=true;
   }
@@ -28,7 +32,7 @@ namespace diffincl {
   DiffInclusion::DiffInclusion(unsigned int dim,
                       const Function* fun, 
                       Interval& time, unsigned int nbsteps) :
-       dim(dim), tfun(tfun),
+       dim(dim), fun(fun), tfun(NULL),
        time(time), nbsteps(nbsteps) {
        this->time_dependent=false;
   }
@@ -36,6 +40,8 @@ namespace diffincl {
   DiffInclusion::DiffInclusion(std::istream& input) {
        char str[256], *token;
        bool fini = false;
+       this->fun = NULL;
+       this->tfun=NULL;
        this->dim=-1;
        this->nbsteps=0;
        this->time_dependent = false;
@@ -175,6 +181,8 @@ namespace diffincl {
   // fcent = f(center of the zone, half time)
   // tVect = mid of temporal differential (dfun/dt (mid_t))
   // jac : mid of jacobian (dfun/dx (zone))
+  // coord : actual abstract domain representation
+  // invcoord : its inverse
   // ExpM (out) : exponential (not cumulated)
   // evolCenter (out) : evolution of the ``center'' 
   // tauProdExpM (out) : intermediate exponential/[0,1] (!not! cumulated)
@@ -186,9 +194,12 @@ namespace diffincl {
                          const Vector& tVect,
                          const Matrix& jac,
                          const IntervalVector& uncert,
+                         const IntervalMatrix* coord,
+			 const IntervalMatrix* invcoord,
                          double tsteps,
   	                 IntervalVector& evolCenter, 
                          IntervalMatrix& ExpM,
+                         IntervalMatrix& invExpM,
 			 IntervalVector& tauCent,
 			 IntervalMatrix& tauProdExpM) {
      // global computation of the exponentials and their integral
@@ -200,11 +211,34 @@ namespace diffincl {
      Matrix IntAbs(dim,dim);
      const Matrix Id = Matrix::eye(dim);
 
+       // with coord and invcoord
+         IntervalMatrix M(dim,dim);
+         IntervalMatrix Minv(dim,dim);
      // computation of exponentials and other values
-     global_exp(jac,tsteps,true,time_dependent,
-		ExpM,tauExpM,IExpM,tauIExpM,
+     if (coord!=NULL) {
+         IntervalMatrix dummy1(dim,dim);
+         IntervalMatrix dummy2(dim,dim);
+         IntervalMatrix dummy3(dim,dim);
+         // first computation, with the matrix and its inverse
+         global_exp(jac,tsteps,false,false,
+		ExpM,invExpM,tauExpM,IExpM,tauIExpM,
 		VExpM,tauVExpM,IntAbs);
-
+//	 std::cout << "ExpM " << ExpM << "\ninvExpM " << invExpM << "\nproduct " << (ExpM*invExpM) << "\n"; 
+         // new computation with jac = invcoord * jac * coord
+         M = ExpM*(*coord);
+         Minv = (*invcoord)*invExpM;
+//	 std::cout << "M " << M << "\nMinv " << Minv << "\nproduct " << (M*Minv) << "\n"; 
+         IntervalMatrix modifiedJac = 
+		Minv * jac * M;
+//	 std::cout << "jac " << jac << "\nmodified jac " << modifiedJac << "\n"; 
+         global_exp(modifiedJac,tsteps,true,time_dependent,
+		dummy1,dummy2,dummy3,IExpM,tauIExpM,
+		VExpM,tauVExpM,IntAbs);
+     } else {
+         global_exp(jac,tsteps,true,time_dependent,
+	   	ExpM,invExpM,tauExpM,IExpM,tauIExpM,
+		VExpM,tauVExpM,IntAbs);
+     }
      if (debug_level>5)
 	std::cout << "\n\nExpM" << ExpM << "\ntauExpM" 
 		  << tauExpM << "\nIExpM" << IExpM << "\ntauIExpM" 
@@ -213,41 +247,71 @@ namespace diffincl {
 
      ////// ``intermediates'' values  (between 0 and tsteps) 
 
-     // uncertainty
-     Vector vuncert = IntAbs * uncert.ub();
-     // ``derivation'' of the center ( f(cent) * int exp(M\tau) )
-     tauCent = tauIExpM * fcent;
-     // non-autonomous factor
-     if (time_dependent) {
-           tauCent += tauVExpM * tVect;
-     }
-     if (debug_level>5)
-        std::cout << "derivation without uncertainty : " << tauCent << "\n";
-     // adding the uncertainty to evolCenter
-     for (int i=0;i<dim;i=i+1) (tauCent[i]).inflate(vuncert[i]); 
-     // new product
-     tauProdExpM = tauExpM;
+     if (coord==NULL) {
+       // uncertainty
+       Vector vuncert = IntAbs * uncert.ub();
+       // ``derivation'' of the center ( f(cent) * int exp(M\tau) )
+       tauCent = tauIExpM * fcent;
+       // non-autonomous factor
+       if (time_dependent) {
+             tauCent += tauVExpM * tVect;
+       }
+       if (debug_level>5)
+          std::cout << "derivation without uncertainty : " << tauCent << "\n";
+       // adding the uncertainty to evolCenter
+       for (int i=0;i<dim;i=i+1) (tauCent[i]).inflate(vuncert[i]); 
+       // new product
+       tauProdExpM = tauExpM;
+  
+       ///// ``final'' values (at tsteps)
+       // ``derivation'' of the center ( f(cent) * int exp(M\tau) )
+       evolCenter = IExpM * fcent;
+       // non-autonomous factor
+       if (time_dependent) {
+             evolCenter += VExpM * tVect;
+       }
+       for (int i=0;i<dim;i=i+1) (evolCenter[i]).inflate(vuncert[i]);
+    } else {
 
-     ///// ``final'' values (at tsteps)
-     // ``derivation'' of the center ( f(cent) * int exp(M\tau) )
-     evolCenter = IExpM * fcent;
-     // non-autonomous factor
-     if (time_dependent) {
-           evolCenter += VExpM * tVect;
-     }
-     for (int i=0;i<dim;i=i+1) (evolCenter[i]).inflate(vuncert[i]);
-  }
+       // uncertainty
+       Vector vuncert = IntAbs * (Minv * uncert).ub();
+       // ``derivation'' of the center ( f(cent) * int exp(M\tau) )
+       tauCent = tauIExpM * (Minv * fcent);
+       // non-autonomous factor
+       if (time_dependent) {
+             tauCent += tauVExpM * (Minv * tVect);
+       }
+       if (debug_level>5)
+          std::cout << "derivation without uncertainty : " << tauCent << "\n";
+       // adding the uncertainty to evolCenter
+       for (int i=0;i<dim;i=i+1) (tauCent[i]).inflate(vuncert[i]); 
+       // new product
+       tauProdExpM = tauExpM;
+  
+       ///// ``final'' values (at tsteps)
+       // ``derivation'' of the center ( f(cent) * int exp(M\tau) )
+       evolCenter = IExpM * (Minv * fcent);
+       // non-autonomous factor
+       if (time_dependent) {
+             evolCenter += VExpM * (Minv * tVect);
+       }
+       for (int i=0;i<dim;i=i+1) (evolCenter[i]).inflate(vuncert[i]);
+    }
+}
 
   ///// possible step 
   void DiffInclusion::fwd_step(const IntervalVector& constraint,
-		const IntervalVector& Xbox,
 		const IntervalVector& approxbox, 
                 const Vector& center_Approxbox,
 		const Interval& timeslice,
+                const IntervalMatrix* coord,
+		const IntervalMatrix* invcoord,
                 double tsteps,
 		IntervalMatrix& ExpM,
+		IntervalMatrix& invExpM,
+		IntervalMatrix& tauExpM,
 		IntervalVector& evolCenter,
-		IntervalVector& tauXbox) {
+		IntervalVector& tauCent) {
         /* computation of the Jacobian , and temporal differentiation */
         const Interval Unt(0.0,1.0);
         IntervalVector tdiff(dim);
@@ -277,30 +341,45 @@ namespace diffincl {
         uncert &= u2;
 #endif
   
-        IntervalVector tauCent(dim);
-        IntervalMatrix tauprodExpM(dim,dim);
         this->compute_next_step(fun_evalc,center_tdiff,center_jac,
-		uncert, tsteps, evolCenter, ExpM, tauCent, tauprodExpM);
+	    uncert, coord, invcoord,
+	    tsteps, evolCenter, ExpM, invExpM, tauCent, tauExpM);
 
+#if 0
+        if (coord==NULL) {
 	// imprecise computation of intermediate box from
         // Xbox (instead of Cent + prodExpM X0c)
 	// probably not useful to do better (?)
-        tauXbox = Xbox + 
+           tauXbox = Xbox + 
 		Unt*(tauprodExpM*(Xbox-center_Approxbox) + tauCent);
-        tauXbox &= constraint;
+           tauXbox &= constraint;
+        } else {
+           IntervalMatrix M = ExpM * (*coord);
+           IntervalMatrix Minv = (*invcoord) * invExpM;
+        // very imprecise computation ?
+//           tauXbox = Xbox + Unt*
+//		(tauprodExpM*(Xbox-center_Approxbox) + M*tauCent);
+//          tauXbox &= constraint;
+ 	   tauXbox = Xbox;
+        }
+#endif
   }
 
   
   ///// forward differential inclusion X' = f(X,t)
   TubeVector DiffInclusion::fwd_inclusion(const IntervalVector& frame, 
                                const IntervalVector& X0) {
-       assert(fun != NULL);
+       assert(fun != NULL || tfun != NULL);
        assert(X0.dim()==dim);
        const double cst_tsteps = time.diam()/nbsteps;
        double tsteps = cst_tsteps;
        double inflation_f = default_inflation_factor;
   
+#ifndef USE_IVPARALS
        IVdouble actStates(X0); // actuel set of states
+#else
+       IVparals actStates(X0); // actuel set of states
+#endif
 //       IntervalVector Cent(X0.mid());
 //       const IntervalVector X0c = X0-Cent; // centered "initial" place
        const Matrix Id = Matrix::eye(dim);
@@ -314,6 +393,13 @@ namespace diffincl {
        double oldtime = time.lb();
        while (oldtime<time.ub()) {
            double currenttime=oldtime+tsteps;
+	/// Reinitialisation (FIXME : customize)
+/*
+#ifndef USE_IVPARALS
+	   if ((int) (oldtime*7/time.ub()) < (int) (currenttime*7/time.ub()))
+                   actStates = IVdouble(Xbox);
+#endif
+*/
            if (currenttime>time.ub()) currenttime=time.ub();
            Interval timeslice(oldtime,currenttime);
            IntervalVector approxbox = 
@@ -321,19 +407,39 @@ namespace diffincl {
 				tsteps>=cst_tsteps/4.0);
            Vector center_Approxbox = approxbox.mid();
            IntervalMatrix ExpM(dim,dim);
+           IntervalMatrix InvExpM(dim,dim);
+           IntervalMatrix tauExpM(dim,dim);
            IntervalVector evolCenter(dim);
-           IntervalVector tauXbox(dim);
+           IntervalVector tauEvolCenter(dim);
 
 
 	   // computation of the step 
-           this->fwd_step(frame,Xbox,approxbox,center_Approxbox,
-		timeslice, tsteps, ExpM, evolCenter, tauXbox);
+           this->fwd_step(frame,approxbox,center_Approxbox,
+		timeslice,
+// #define NCOMPUT
+#ifdef NCOMPUT
+		&(actStates.getMat()),
+		&(actStates.getInvMat()), 
+#else
+                NULL, NULL,
+#endif
+                tsteps, ExpM, InvExpM, tauExpM, evolCenter, tauEvolCenter);
 			
+           const Interval Unt(0.0,1.0);
+           IntervalVector bbtauXbox(dim);
+           bbtauXbox = Xbox + 
+			Unt*(tauExpM*(Xbox-center_Approxbox)+tauEvolCenter);
+/*
+	   IVparals tauXbox(actStates);
+           tauXbox.ctau_mult_and_add(center_Approxbox,tauExpM,tauEvolCenter);
+           IntervalVector bbtauXBox = tauXbox.bounding_box();
+*/
 
-           if (!tauXbox.is_subset(approxbox)) {
+           if (!bbtauXbox.is_subset(approxbox)) {
               if (debug_level>=3)
                 std::cerr << "Erreur tauXbox//approxbox !!!\n" 
-                    << tauXbox << "  " << approxbox << " tsteps " <<
+                    << bbtauXbox 
+		    << "  " << approxbox << " tsteps " <<
                        tsteps <<  " inf_f " << inflation_f << "\n\n";
 	      // trying a smaller time slice
 	      tsteps/=2.0;
@@ -342,15 +448,19 @@ namespace diffincl {
            } 
 
 	   // domain at the new time
-	   actStates.cmult_and_add(center_Approxbox,ExpM, evolCenter);
+#ifdef NCOMPUT
+	   actStates.cmult_and_add2(center_Approxbox,ExpM,InvExpM,evolCenter);
+#else
+	    actStates.cmult_and_add(center_Approxbox,ExpM,InvExpM,evolCenter);
+#endif
            oldtime=currenttime;
 	   // Computation of Xbox (for the tube)
            Xbox = actStates.bounding_box();
 	   Xbox &= frame;
-           if (debug_level>=1) 
+           if (debug_level>=4) 
               std::cerr << "time : " << currenttime 
 		        << " box : " << Xbox << "\n";
-           Result.set(tauXbox,timeslice);
+           Result.set(bbtauXbox,timeslice);
            Result.set(Xbox,currenttime);
            // resetting the time step 
 	   tsteps=cst_tsteps;
@@ -359,6 +469,125 @@ namespace diffincl {
        return Result;
   }
 
+  TubeVector DiffInclusion::capd_fwd_inclusion(const IntervalVector& frame, 
+                               const IntervalVector& X0) {
+      if (this->time_dependent) {
+       return CAPD_integrateODE(this->time,*(this->tfun),X0,
+		this->time.diam()/this->nbsteps,10,
+		this->time.diam()/this->nbsteps);
+      } else {
+       return CAPD_integrateODE(this->time,*(this->fun),X0,this->time.diam()/this->nbsteps,10,
+		this->time.diam()/this->nbsteps);
+      }
+   }
+
+		 
+   vector<IVparals>
+		 DiffInclusion::room_fwd_computation(const IntervalVector& box,
+                        const IVparals& X0,
+                        const Interval& intTime,
+                        double timesteps,
+                        double timeShift) {
+       assert ((fun != NULL) || (tfun != NULL));
+       assert(X0.dim()==dim);
+       IVparals initParals(dim);
+       vector<IVparals> outDoors(2*dim,initParals);
+       double tsteps = timesteps;
+       double inflation_f = default_inflation_factor;
+  
+       IVparals actStates(X0); // actuel set of states
+//       IntervalVector Cent(X0.mid());
+//       const IntervalVector X0c = X0-Cent; // centered "initial" place
+       const Matrix Id = Matrix::eye(dim);
+//       IntervalMatrix prodExpM(Id); // products of exponential
+       IntervalVector Xbox(actStates.bounding_box()); // recomputed box (= actStates.bounding_box())
+
+       double oldtime = 0.0;
+       while (oldtime<time.ub()) {
+           double currenttime=oldtime+tsteps;
+	/// Reinitialisation (FIXME : customize)
+/*
+#ifndef USE_IVPARALS
+	   if ((int) (oldtime*7/time.ub()) < (int) (currenttime*7/time.ub()))
+                   actStates = IVdouble(Xbox);
+#endif
+*/
+           if (currenttime>time.ub()) currenttime=time.ub();
+           Interval timeslice(oldtime+timeShift,currenttime+timeShift);
+           IntervalVector approxbox = 
+  		this->extend_box_basic(box,Xbox,timeslice,inflation_f,
+				tsteps>=timesteps/4.0);
+           Vector center_Approxbox = approxbox.mid();
+           IntervalMatrix ExpM(dim,dim);
+           IntervalMatrix InvExpM(dim,dim);
+           IntervalMatrix tauExpM(dim,dim);
+           IntervalVector evolCenter(dim);
+           IntervalVector tauEvolCenter(dim);
+
+
+	   // computation of the step 
+           this->fwd_step(box,approxbox,center_Approxbox,
+		timeslice,
+// #define NCOMPUT
+#ifdef NCOMPUT
+		&(actStates.getMat()),
+		&(actStates.getInvMat()), 
+#else
+                NULL, NULL,
+#endif
+                tsteps, ExpM, InvExpM, tauExpM, evolCenter, tauEvolCenter);
+			
+           const Interval Unt(0.0,1.0);
+           IntervalVector bbtauXbox(dim);
+           bbtauXbox = Xbox + 
+			Unt*(tauExpM*(Xbox-center_Approxbox)+tauEvolCenter);
+/*	   IVparals tauXbox(actStates);
+           tauXbox.ctau_mult_and_add(center_Approxbox,tauExpM,tauEvolCenter);
+           IntervalVector bbtauXBox = tauXbox.bounding_box();
+*/
+           bbtauXbox &= box;
+           if (!bbtauXbox.is_subset(approxbox)) {
+              if (debug_level>=3)
+                std::cerr << "Erreur tauXbox//approxbox !!!\n" 
+                    << bbtauXbox << "  " << approxbox << " tsteps " <<
+                       tsteps <<  " inf_f " << inflation_f << "\n\n";
+	      // trying a smaller time slice
+	      tsteps/=2.0;
+              inflation_f *= 1.3;
+              continue;
+           } 
+
+	   /* compute doors */
+           for (int i=0;i<dim;i++) {
+		outDoors[2*i].join_intersect_with_tau(actStates,
+			center_Approxbox, tauExpM,tauEvolCenter,
+			box,i,box[i].lb());
+		outDoors[2*i+1].join_intersect_with_tau(actStates,
+			center_Approxbox, tauExpM,tauEvolCenter,
+			box,i,box[i].ub());
+           } 
+	   // domain at the new time
+#ifdef NCOMPUT
+	   actStates.cmult_and_add2(center_Approxbox,ExpM,InvExpM,evolCenter);
+#else
+	    actStates.cmult_and_add(center_Approxbox,ExpM,InvExpM,evolCenter);
+#endif
+ 	   actStates.intersect_with(box);
+           oldtime=currenttime;
+	   // Computation of Xbox (for the tube)
+           Xbox = actStates.bounding_box();
+           if (debug_level>=4) 
+              std::cerr << "time : " << currenttime 
+		        << " box : " << Xbox << "\n";
+           // resetting the time step 
+	   tsteps=timesteps;
+	   inflation_f=default_inflation_factor;
+       }
+       return outDoors;
+  }
+
+
+		
 
 #if 0
 

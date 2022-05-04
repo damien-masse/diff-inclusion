@@ -8,6 +8,8 @@
 #include <iostream>
 #include <vector>
 #include <codac.h>
+#include <codac-capd.h>
+#include "IVparals.h"
 
 using namespace codac;
 
@@ -94,22 +96,28 @@ class DiffInclusion
                          const Vector& tVect,
                          const Matrix& jac,
                          const IntervalVector& uncert,
+                         const IntervalMatrix* coord,
+                         const IntervalMatrix* invcoord,
                          double tsteps,
                          IntervalVector& evolCenter,
                          IntervalMatrix& ExpM,
+                         IntervalMatrix& invExpM,
                          IntervalVector& tauCent,
                          IntervalMatrix& tauProdExpM);
 
 
       void fwd_step(const IntervalVector& constraint,
-                const IntervalVector& Xbox,
                 const IntervalVector& approxbox,
                 const Vector& center_Approxbox,
                 const Interval& timeslice,
+                const IntervalMatrix* coord,
+                const IntervalMatrix* invcoord,
                 double tsteps,
                 IntervalMatrix& ExpM,
+                IntervalMatrix& invExpM,
+                IntervalMatrix& tauExpM,
                 IntervalVector& evolCenter,
-                IntervalVector& tauXbox);
+                IntervalVector& tauCent);
 
 
       ///// differential inclusion        X' = f(X)
@@ -118,6 +126,26 @@ class DiffInclusion
       TubeVector fwd_inclusion(const IntervalVector& frame, 
 	      	               const IntervalVector& X0);
 
+      ///// CAPD differential inclusion        X' = f(X)
+      // frame : global frame (no computation outside)
+      // X0 : initial position
+      TubeVector capd_fwd_inclusion(const IntervalVector& frame, 
+	      	               const IntervalVector& X0);
+
+      ///// ``room'' traversal (generating doors from initial input door,
+      // time interval, time steps...
+      // X0 : initial position (input door)
+      // intTime : time interval to compute the exits (e.g. not starting
+      //      from 0 => the initial door will not appear as an output door)
+      // timestep : time steps
+      // outDoors : output (2*dim doors)
+      // timeshift (optional) : for time-dependant function, the value of t 
+      // corresponding to the initial position
+      vector<IVparals> room_fwd_computation(const IntervalVector& box,
+			const IVparals& X0,
+			const Interval& intTime,
+			const double timesteps,
+			double timeShift = 0.);
 
 
     private:

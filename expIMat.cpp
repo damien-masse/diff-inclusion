@@ -582,6 +582,7 @@ void constrain_tauEM(IntervalMatrix& tauExpM,
 void global_exp_base(const IntervalMatrix& A,
           int k, bool with_slices, bool with_time,
           IntervalMatrix& ExpA,
+          IntervalMatrix& invExpA,
           IntervalMatrix& tauExpA,
           IntervalMatrix& IexpA,
           IntervalMatrix& tauIexpA,
@@ -596,6 +597,7 @@ void global_exp_base(const IntervalMatrix& A,
     Interval baseErrorTerm = norm*norm/(k*(k+1));
     IntervalMatrix sqA = square_IntervalMatrix(A);
     ExpA = (Interval::ONE/(k+1))*sqA; // will be used for base1 
+    invExpA = ExpA; // inverse = same with -A (but (-A)^2 = A^2
     tauExpA = Unt*ExpA; // Ubase1
     if (with_time) {
        IexpA = Id; // temporary use
@@ -604,7 +606,9 @@ void global_exp_base(const IntervalMatrix& A,
     }
     while (k>3) {
        ExpA += A; ExpA *= Interval::ONE/k; ExpA += Id;
+       invExpA -= A; invExpA *= Interval::ONE/k; invExpA += Id;
        ExpA *= (Interval::ONE/(k-1))*sqA;
+       invExpA *= (Interval::ONE/(k-1))*sqA;
        tauExpA += A; tauExpA *= Unt/k; tauExpA += Id;
        tauExpA *= (Unt/(k-1))*sqA;
        if (with_time) {
@@ -643,6 +647,7 @@ void global_exp_base(const IntervalMatrix& A,
     IexpA = one6*quad_MM(A,3.0*Id+ExpA);
     // then ExpA
     ExpA = 0.5*quad_M(A,2.0)+one6*sqA*(A+ExpA);
+    invExpA = 0.5*quad_M(-A,2.0)+one6*sqA*(-A+invExpA);
     // tauIexpA if needed
     if (with_slices) {
       tauIexpA = one6*quad_MMtau(A,3.0*Id+tauExpA);
@@ -653,6 +658,7 @@ void global_exp_base(const IntervalMatrix& A,
     baseErrorTerm *= 0.5*norm*norm; // NA^(k+1)/(k+1)!
     Interval nET0 = baseErrorTerm*norm*(k+3)/(k+2)/(k+3-norm);
     ExpA.inflate(nET0.ub());
+    invExpA.inflate(nET0.ub());
     tauExpA.inflate(nET0.ub());
     Interval nET1 = baseErrorTerm/(k+2-norm);
     IexpA.inflate(nET1.ub());
@@ -665,7 +671,6 @@ void global_exp_base(const IntervalMatrix& A,
          tauVexpA.inflate(nET2.ub());
     }
 //    std::cout << "M" << A << "\nExpM" << ExpA << "\ntauExpM" << tauExpA << "\nIExpM" << IexpA << "\ntauIExpM" << tauIexpA << "\nVExpM" << VexpA << "\ntauVExpM" << tauVexpA << "\n";
-
 }
 
 
@@ -764,10 +769,11 @@ void add_int_absL (int dim, Matrix& Res,
     
 
 const double mnorm = 1e-3;
-const int nbitbase = 5;
+const int nbitbase = 3;
 void global_exp(const IntervalMatrix& M,
           double tim, bool with_slices, bool with_time,
           IntervalMatrix& expM,
+	  IntervalMatrix& invExpM,
           IntervalMatrix& tauExpM,
           IntervalMatrix& IexpM,
           IntervalMatrix& tauIexpM,
@@ -789,7 +795,7 @@ void global_exp(const IntervalMatrix& M,
      }
      IntervalMatrix MS = a*tim*M;
      global_exp_base(MS,l/2+nbitbase,with_slices,with_time,
-	expM,tauExpM,IexpM,tauIexpM, VexpM, tauVexpM);
+	expM,invExpM,tauExpM,IexpM,tauIexpM, VexpM, tauVexpM);
      // global_exp_base gives tauIexpM/tau...
      if (with_slices)
         tauIexpM *= Unt;
@@ -835,12 +841,14 @@ void global_exp(const IntervalMatrix& M,
          IexpM = quad_prod(IexpM,expM,1.0,0.5,0.5);
          // expM
          expM = quad_M(expM,2.0);
-         
+         invExpM = quad_M(invExpM, 2.0);
          a = a*2.0;
      }
      // end operations
      // expM = e^M
      expM += Id;
+     // invExpM = e^(-M)
+     invExpM += Id;
      // IexpM = int_0^tim exp tauM dtau = tim * (Id + IexpM)
      IexpM += Id;
      IexpM *= tim;

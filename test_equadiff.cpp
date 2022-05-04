@@ -21,7 +21,6 @@ void parse_command(const char *name,DiffInclusion& di, std::ifstream& input) {
     IntervalVector frame(di.get_dim());
     IntervalVector X0(di.get_dim());
     
-    VIBesFigTubeVector VB(name);
     while (!input.eof()) {
       str[0] = '\0';
       input >> str;
@@ -53,7 +52,27 @@ void parse_command(const char *name,DiffInclusion& di, std::ifstream& input) {
     }
     }
 #endif
+           std::cout << "expo : " << (Result(Result.nb_slices()-1)) << "\n";
+           VIBesFigTubeVector VB(name);
            VB.add_tube(&Result, "resultat");
+    	   VB.show(true);
+      } else if (strcasecmp(str,"capd_compute_fwd")==0) {
+           TubeVector Result = di.capd_fwd_inclusion(frame,X0);
+    // FIXME : bounding boxes of tubes !!
+#if 0
+    for (int j=0;j<=1;j++) {
+    for (int i=0;i<Result[0].nb_slices();i++) {
+      ((Result[j]).slice(i))->set_envelope
+		(((Result[j]).slice(i))->input_gate() | ((Result[j]).slice(i))->output_gate());
+    }
+    }
+#endif
+           std::cout << "CAPD : " << (Result(Result.nb_slices()-1)) << "\n";
+           char namep[50];
+           strcpy(namep,name);
+           strcat(namep,"-capd");
+           VIBesFigTubeVector VB(namep);
+           VB.add_tube(&Result, "resultat_capd");
     	   VB.show(true);
       }
     }

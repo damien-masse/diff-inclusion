@@ -16,34 +16,82 @@ using namespace codac;
 namespace diffincl {
 
   IVdouble::IVdouble(const IntervalVector& iv) :
-      dim(iv.size()), mA(iv.size(),iv.size(), Interval::ZERO),
+      dim(iv.size()), mA(iv.size(),iv.size(), Interval::zero()),
+      mAinv(iv.size(),iv.size(),Interval::zero()),
       x0(iv.size()), vB(iv.size())
    {
        for (int i=0;i<this->dim;i++) this->mA[i][i] = Interval::ONE;
+       for (int i=0;i<this->dim;i++) this->mAinv[i][i] = Interval::ONE;
        this->vB = iv.mid();
        this->x0 = iv - this->vB;
    }
 
    IVdouble::IVdouble(const IVdouble& iv) :
-       dim(iv.dim), mA(iv.mA), x0(iv.x0), vB(iv.vB) { }
+       dim(iv.dim), mA(iv.mA), mAinv(iv.mAinv), x0(iv.x0), vB(iv.vB) { }
 
    IntervalVector IVdouble::bounding_box() const {
        return (this->mA)*(this->x0) + (this->vB);
    }
 
-   void IVdouble::mult_and_add(const IntervalMatrix& M, const IntervalVector& V)
+   void IVdouble::mult_and_add(const IntervalMatrix& M, 
+		const IntervalMatrix& Minv, const IntervalVector& V)
    {
        this->vB = M*(this->vB) + V;
        this->mA = M*this->mA;
+       this->mAinv = this->mA*Minv;
    }
 
    void IVdouble::cmult_and_add
 		(const Vector& center,
-			const IntervalMatrix& M, const IntervalVector& V)
+		 const IntervalMatrix& M, 
+		 const IntervalMatrix& Minv,
+		 const IntervalVector& V)
    {
        this->vB = center + M*(this->vB - center) + V;
        this->mA = M*this->mA;
-       this->simplify(1e-3,1e-4);
+       this->mAinv = this->mAinv*Minv;
+       this->simplify(0.1,0);
+   }
+
+   void IVdouble::cmult_and_add2
+		(const Vector& center,
+		 const IntervalMatrix& M, 
+		 const IntervalMatrix& Minv,
+		 const IntervalVector& V)
+   {
+       Vector Vc = V.mid();
+       IntervalVector NV = V - Vc;
+       this->vB = center + M*(this->vB - center + this->mA * Vc);
+       this->x0 = this->x0 + NV;
+       this->mA = M*this->mA;
+       this->mAinv = this->mAinv*Minv;
+   }
+
+   void IVdouble::cmult_and_add3
+		(const Vector& center,
+		 const IntervalMatrix& M, 
+		 const IntervalMatrix& Minv,
+		 const IntervalVector& V,
+		 const IntervalVector& V2)
+   {
+       this->vB = center + M*(this->vB - center) + V2;
+       this->x0 = this->x0 + V;
+       this->mA = M*this->mA;
+       this->mAinv = this->mAinv*Minv;
+   }
+
+   void IVdouble::cmult_and_add4
+		(const Vector& center,
+		 const IntervalMatrix& M, 
+		 const IntervalMatrix& Minv,
+		 const IntervalVector& V, // unused
+		 const IntervalVector& V2,
+		 const IntervalVector& Vb) 
+   {
+       this->vB = center + M*(this->vB - center) + V2;
+       this->x0 = this->x0 + V;
+       this->mA = M*this->mA;
+       this->mAinv = this->mAinv*Minv;
    }
 
    void IVdouble::simplify(double threshold1, double threshold2) {
