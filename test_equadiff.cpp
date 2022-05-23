@@ -42,7 +42,13 @@ void parse_command(const char *name,DiffInclusion& di, std::ifstream& input) {
               X0[i] = a;
            }
       } else if (strcasecmp(str,"compute_fwd")==0) {
-           TubeVector Result = di.fwd_inclusion(frame,X0);
+            VIBesFig fig("Polygons");
+            Matrix projec(2,di.get_dim());
+            projec[0][0]=1.0; projec[0][1]=0.0;
+            projec[1][0]=0.0; projec[1][1]=1.0;
+            for (int i=2;i<di.get_dim();i++) projec[0][i]=projec[1][i]=0.0;
+
+            TubeVector Result = di.fwd_inclusion(frame,X0,&fig,&projec,50);
     // FIXME : bounding boxes of tubes !!
 #if 0
     for (int j=0;j<=1;j++) {
@@ -52,7 +58,7 @@ void parse_command(const char *name,DiffInclusion& di, std::ifstream& input) {
     }
     }
 #endif
-           std::cout << "expo : " << (Result(Result.nb_slices()-1)) << "\n";
+           std::cout << "expo : " << (Result(di.get_time().ub())) << "\n";
            VIBesFigTubeVector VB(name);
            VB.add_tube(&Result, "resultat");
     	   VB.show(true);

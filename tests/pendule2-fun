@@ -1,0 +1,5 @@
+dim := 2
+timedependent := n
+time := [0,9]
+function := (x,y) : (y,-sin(x)+[-0.01,0.01])
+nbsteps := 4096

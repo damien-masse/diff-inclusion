@@ -132,6 +132,57 @@ namespace diffincl {
 	this->intersect_with(ivp.bounding_box());
    }
 
+  /* intersection with quasi-linear constraints,
+     keeping the actual "constraints boxes"
+   */
+   void IVparals::intersect_with(const IntervalMatrix& M,
+			const IntervalVector& Y) {
+        if (this->isempty) return;
+        IntervalMatrix M1 = M;
+        IntervalVector cRhs = this->rhs[this->nbmat] + this->center;
+        bwd_mul(Y,M1,cRhs,0.001);
+        if (cRhs.is_empty()) { this->isempty=true; 
+			this->rhs[this->nbmat].set_empty(); return; }
+       this->rhs[nbmat] &= cRhs - this->center;
+
+       for (int j=0;j<this->nbmat;j++) {
+           IntervalMatrix M1 = M * this->mats[j];
+           IntervalVector cRhs = this->rhs[j] + this->Imats[j] * this->center;
+           bwd_mul(Y,M1,cRhs,0.001);
+           if (cRhs.is_empty()) { 
+		this->isempty=true; 
+		this->rhs[this->nbmat].set_empty(); return; }
+           this->rhs[j] &= cRhs - this->Imats[j] * this->center;
+        }
+        this->simplify(true);
+   }
+
+  /* intersection with quasi-linear constraints,
+     keeping the actual "constraints boxes"
+   */
+   void IVparals::intersect_with(const IntervalMatrix& M, const Vector& c,
+			const IntervalVector& Y) {
+        if (this->isempty) return;
+        IntervalMatrix M1 = M;
+        IntervalVector cRhs = this->rhs[this->nbmat] + (this->center - c);
+        bwd_mul(Y,M1,cRhs,0.001);
+        if (cRhs.is_empty()) { this->isempty=true; 
+			this->rhs[this->nbmat].set_empty(); return; }
+       this->rhs[nbmat] &= cRhs - (this->center - c);
+
+       for (int j=0;j<this->nbmat;j++) {
+           IntervalMatrix M1 = M * this->mats[j];
+           IntervalVector cRhs = this->rhs[j] + this->Imats[j] * (this->center-c);
+           bwd_mul(Y,M1,cRhs,0.001);
+           if (cRhs.is_empty()) { 
+		this->isempty=true; 
+		this->rhs[this->nbmat].set_empty(); return; }
+           this->rhs[j] &= (cRhs - this->Imats[j] * (this->center-c));
+        }
+        this->simplify(true);
+   }
+
+
    bool IVparals::join_intersect_with(const IVparals& iv,
 				const IntervalVector& box, int d, double val) {
         if (iv.is_empty()) return false;
@@ -234,6 +285,21 @@ namespace diffincl {
         if (ret) { this->simplify(true); return true; }
         return false;
    }
+
+
+   bool IVparals::contains(const Vector& iv) const {
+       if (this->isempty) return false;
+       Vector ivc = iv - this->center;
+       if (!this->rhs[this->nbmat].contains(ivc)) return false;
+       for (int i=0;i<this->nbmat;i++) {
+          if (!this->rhs[i].intersects(this->Imats[i]*ivc)) return false;
+       }
+       return true;
+   }
+
+
+
+
    // mult and add 
    // principle for kept matrices:
    // we consider rhs[i] = Md*rhs[i] + inter_j (MNd * IMi Mj) rhs[j]
@@ -386,14 +452,72 @@ namespace diffincl {
    void IVparals::simplify(bool bwd) {
      if (this->isempty) return;
      /* FIXME : make something for more than one dimension */
-     this->rhs[1] &= this->mats[0] * this->rhs[0];
-     this->rhs[0] &= this->Imats[0] * this->rhs[1];
+//     for (int i=0;i<=3;i++) {
+       this->rhs[1] &= this->mats[0] * this->rhs[0];
+       this->rhs[0] &= this->Imats[0] * this->rhs[1];
+       if (this->rhs[0].is_empty() ||
+           this->rhs[1].is_empty())  { this->rhs[1].set_empty(); 
+				     this->isempty=true; }
+//     }
+
      if (bwd) {
-       bwd_mul(this->rhs[1],this->mats[0],this->rhs[0],0.001);
-       bwd_mul(this->rhs[0],this->Imats[0],this->rhs[1],0.001);
+       bwd_mul(this->rhs[1],this->mats[0],this->rhs[0],0.0001);
+       bwd_mul(this->rhs[0],this->Imats[0],this->rhs[1],0.0001);
      }
-     if (this->rhs[0].is_empty() ||
-         this->rhs[1].is_empty())  this->isempty=true;
+
    }
+
+   /** generate a list of (2D) points, the convex hull of which is an
+    * (over)-approximation of the projection of the polyhedron
+    */
+   ConvexPolygon IVparals::over_polygon(const Matrix& M) const {
+        /* first we generate a projection of the parallelotope */
+        if (this->isempty) return ConvexPolygon();
+        /* just the first polygon (not manage intersection) */
+        Vector V1(this->dim);
+        ConvexPolygon res;
+	Vector cent(M*this->center);
+        /* compute the projection for large dimension is a bit complex
+           (but interesting), will do it dirty */
+        for (int k=0;k<=this->nbmat;k++) {
+          bool val[this->dim];
+          vector<Point> lpoints;
+          for (int i=0;i<this->dim;i++) {
+             val[i]=false;
+             V1[i] = this->rhs[k][i].lb(); 
+          }
+          while (true) {
+             if (k<this->nbmat) {
+	            lpoints.push_back(Point(cent+M*(this->mats[k]*V1)));
+             } else {
+	            lpoints.push_back(Point(cent+M*V1));
+             }
+             int j=dim-1;
+             while (j>=0 && val[j]==true) {
+                  V1[j]=this->rhs[k][j].lb();
+                  val[j]=false; 
+                  j--;
+             }
+             if (j<0) break;
+             val[j]=true;
+             V1[j] = this->rhs[k][j].ub(); 
+          }
+          ConvexPolygon a(lpoints);
+          if (k==0) res=a; else res= res & a;
+       }
+       return res; 
+   }
+
+   std::ostream& operator<<(ostream& str, const IVparals& iv) {
+       if (iv.isempty) { str << "IVparals : empty\n" << flush; return str; }
+       str << "IVparals : (c) " << iv.center << " box " << (iv.center + iv.rhs[iv.nbmat]) << "\n";
+       for (int i=0;i<iv.nbmat;i++) {
+            str << " /\\ " << iv.mats[i] << "\n     X " << iv.rhs[i];
+       }
+       str << "\n" << flush;
+       return str;
+   }
+
+
 }
 

@@ -3,7 +3,7 @@
 # ==================================================================
 
   cmake_minimum_required(VERSION 3.0.2)
-  project(test_equadiff LANGUAGES CXX)
+  project(LANGUAGES CXX)
 
 # Adding IBEX
 
@@ -14,6 +14,7 @@
   find_package(IBEX REQUIRED)
   ibex_init_common() # IBEX should have installed this function
   message(STATUS "Found IBEX version ${IBEX_VERSION}")
+  message(STATUS "Found IBEX inclusion ${IBEX_INCLUDE_DIRS}")
 
 # Adding Eigen3
 
@@ -30,8 +31,10 @@
   # to specify its path with the CMAKE_PREFIX_PATH option.
   # set(CMAKE_PREFIX_PATH "~/codac/build_install")
 
-  find_package(CODAC REQUIRED)
+  find_package(CODAC REQUIRED codac)
   message(STATUS "Found Codac version ${CODAC_VERSION}")
+  message(STATUS "Found Codac inclusion ${CODAC_INCLUDE_DIRS}")
+  message(STATUS "Found Codac flags ${CODAC_CFLAGS}")
 
 # Adding Codac
 
@@ -46,9 +49,20 @@
   message(STATUS "[capd2codac] PKG_CAPD_LDFLAGS = ${PKG_CAPD_LDFLAGS}")
   message(STATUS "[capd2codac] PKG_CAPD_LDFLAGS_OTHER = ${PKG_CAPD_LDFLAGS_OTHER}")
 
+# Executables
+set(LIBS diff_inclusion)
+set(EXECS test_scenar test_equadiff)
+
 # Compilation
 
-  add_executable(${PROJECT_NAME} expIMat.cpp IVdouble.cpp IVparals.cpp diffincl.cpp test_equadiff.cpp)
-  target_compile_options(${PROJECT_NAME} PUBLIC ${CODAC_CXX_FLAGS} ${PKG_CPAD_CFLAGS})
-  target_include_directories(${PROJECT_NAME} PUBLIC ${CODAC_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIRS} ${PKG_CAPD_INCLUDE_DIRS})
-  target_link_libraries(${PROJECT_NAME} ${CODAC_LIBRARIES} Ibex::ibex ${PKG_CAPD_LDFLAGS} /home/damien/Recherche/invariant-lib/ibex-lib/filibsrc/libprim.a)
+foreach(LIB1 ${LIBS})
+  add_library(${LIB1} STATIC expIMat.cpp IVdouble.cpp IVparals.cpp diffincl.cpp)
+  target_include_directories(${LIB1} PUBLIC ${CODAC_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIRS} ${PKG_CAPD_INCLUDE_DIRS})
+  target_compile_options(${LIB1} PUBLIC ${CODAC_CFLAGS} ${PKG_CPAD_CFLAGS})
+  target_link_libraries(${LIB1} ${CODAC_LIBRARIES} Ibex::ibex ${PKG_CAPD_LDFLAGS} /home/damien/Recherche/invariant-lib/ibex-lib/filibsrc/libprim.a)
+endforeach(LIB1 ${LIBS})
+foreach(EXECUTABLE ${EXECS})
+  add_executable(${EXECUTABLE} ${EXECUTABLE}.cpp)
+  target_include_directories(${EXECUTABLE} PUBLIC ${CODAC_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIRS} ${PKG_CAPD_INCLUDE_DIRS})
+  target_link_libraries(${EXECUTABLE} ${CODAC_LIBRARIES} Ibex::ibex ${PKG_CAPD_LDFLAGS} ${LIBS} /home/damien/Recherche/invariant-lib/ibex-lib/filibsrc/libprim.a)
+endforeach(EXECUTABLE ${EXECUTABLES})

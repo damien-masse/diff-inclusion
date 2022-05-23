@@ -82,6 +82,19 @@ class IVparals
       void intersect_with(const IntervalVector& iv);
       void intersect_with(const IVparals& iv);
 
+       /**
+        * intersection with quasi-linear constraints [M][X]=[Y] 
+        */
+      void intersect_with(const IntervalMatrix& M,
+		const IntervalVector& Y);
+
+       /**
+        * intersection with quasi-linear constraints [M][X-c]=[Y] 
+        */
+      void intersect_with(const IntervalMatrix& M,
+		const Vector& c,
+		const IntervalVector& Y);
+
       /**
        * union with an intersection of an IVparals and the border of
        * a box (keep the matrices)
@@ -113,6 +126,12 @@ class IVparals
       /** bounding box
        */
       IntervalVector bounding_box() const;
+
+
+      /** contains point
+       * (approximate...)
+       */
+      bool contains(const Vector& iv) const;
 
       /** multiply by a new matrix, and add 
        *  M : the new matrix, IM its inverse
@@ -161,6 +180,19 @@ class IVparals
                 const IntervalVector& V,
                 const IntervalVector& V2,
                 const IntervalVector& Vb);
+
+      /** generate a ConvexPolygon which is an overapproximation of the
+       * projection of the polyhedron (basic form)
+       */
+      ConvexPolygon over_polygon(const Matrix& M) const;
+
+      /** display
+       */
+      friend std::ostream& operator<<(std::ostream& str, const IVparals& iv);
+
+
+    
+
 
     private:
 

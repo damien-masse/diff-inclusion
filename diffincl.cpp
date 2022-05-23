@@ -155,7 +155,7 @@ namespace diffincl {
                  	const IntervalVector& Xbox,
                  	const Interval& tim, 
 			double inflation_factor,
-			bool last_contraction) {
+			int nb_tries) {
       double tstep = tim.diam();
       Interval btime(0.0,tstep);
       /* estimation des pentes */
@@ -163,12 +163,15 @@ namespace diffincl {
       k1 |= this->teval_vector(tim.mid(), Xbox+tstep/2.0*k1);
       k1 |= this->teval_vector(tim, Xbox+btime*k1);
       /* compute approximation of the result */
-      IntervalVector Res = Xbox + btime*k1;
+      IntervalVector Res = Xbox + /* (nb_tries*inflation_factor/10.0+1)* */
+				btime*k1;
       /* inflation */
-      Res.inflate(inflation_factor,0.0);
+      Res.inflate(inflation_factor);
       Res &= frame;
-      if (last_contraction) {
-        Res = Xbox + btime * this->teval_vector(tim,Res);
+      if (nb_tries<3) {
+        double ifact = nb_tries==0 ? 1.0 : inflation_factor;
+        if (nb_tries==2) ifact *= inflation_factor;
+        Res = Xbox + ifact * btime * this->teval_vector(tim,Res);
         Res &= frame;
       }
       return Res;
@@ -365,33 +368,48 @@ namespace diffincl {
 #endif
   }
 
-  
-  ///// forward differential inclusion X' = f(X,t)
-  TubeVector DiffInclusion::fwd_inclusion(const IntervalVector& frame, 
-                               const IntervalVector& X0) {
+  IVparals DiffInclusion::fwd_inclusion(const IntervalVector& frame, 
+                                const IVparals& X0,
+				TubeVector& Result,
+				const Interval& ptime,
+				unsigned int pnbsteps,
+                               VIBesFig *fig,
+                               const Matrix *pr,
+                               int nbsl) {
+
        assert(fun != NULL || tfun != NULL);
-       assert(X0.dim()==dim);
-       const double cst_tsteps = time.diam()/nbsteps;
+       const double cst_tsteps = ptime.diam()/pnbsteps;
+       double fig_step=0;
+       double next_fig=ptime.lb()-1.0;
+       if (nbsl>0) {
+           fig_step = ptime.diam()/nbsl;
+           next_fig = ptime.lb()+fig_step;
+       }
        double tsteps = cst_tsteps;
        double inflation_f = default_inflation_factor;
-  
+       int nb_tries = 0;
+
+/*
 #ifndef USE_IVPARALS
        IVdouble actStates(X0); // actuel set of states
 #else
+*/
        IVparals actStates(X0); // actuel set of states
+/*
 #endif
+*/
 //       IntervalVector Cent(X0.mid());
 //       const IntervalVector X0c = X0-Cent; // centered "initial" place
        const Matrix Id = Matrix::eye(dim);
 //       IntervalMatrix prodExpM(Id); // products of exponential
-       IntervalVector Xbox(X0); // recomputed box (= actStates.bounding_box())
-
-       // result
-       TubeVector Result(time,frame);
-  
-       Result.sample(time.lb(),X0);
-       double oldtime = time.lb();
-       while (oldtime<time.ub()) {
+       IntervalVector Xbox(actStates.bounding_box());
+       Result.sample(ptime.lb(),Xbox);
+       double oldtime = ptime.lb();
+       if (fig) {
+//             std::cout << "drawing " << *pr << actStates << "\n";
+             fig->draw_polygon(actStates.over_polygon(*pr),"blue");
+       }
+       while (oldtime<ptime.ub()) {
            double currenttime=oldtime+tsteps;
 	/// Reinitialisation (FIXME : customize)
 /*
@@ -400,11 +418,11 @@ namespace diffincl {
                    actStates = IVdouble(Xbox);
 #endif
 */
-           if (currenttime>time.ub()) currenttime=time.ub();
+           if (currenttime>ptime.ub()) currenttime=ptime.ub();
            Interval timeslice(oldtime,currenttime);
            IntervalVector approxbox = 
   		this->extend_box_basic(frame,Xbox,timeslice,inflation_f,
-				tsteps>=cst_tsteps/4.0);
+				nb_tries);
            Vector center_Approxbox = approxbox.mid();
            IntervalMatrix ExpM(dim,dim);
            IntervalMatrix InvExpM(dim,dim);
@@ -436,14 +454,17 @@ namespace diffincl {
 */
 
            if (!bbtauXbox.is_subset(approxbox)) {
-              if (debug_level>=3)
+//              if (debug_level>=5)
                 std::cerr << "Erreur tauXbox//approxbox !!!\n" 
                     << bbtauXbox 
 		    << "  " << approxbox << " tsteps " <<
                        tsteps <<  " inf_f " << inflation_f << "\n\n";
 	      // trying a smaller time slice
-	      tsteps/=2.0;
-              inflation_f *= 1.3;
+              if (nb_tries>1) {
+	        tsteps/=1.4;
+                inflation_f *= 1.5;
+              }
+              nb_tries++;
               continue;
            } 
 
@@ -457,15 +478,50 @@ namespace diffincl {
 	   // Computation of Xbox (for the tube)
            Xbox = actStates.bounding_box();
 	   Xbox &= frame;
-           if (debug_level>=4) 
+           if (debug_level>=5) 
               std::cerr << "time : " << currenttime 
 		        << " box : " << Xbox << "\n";
            Result.set(bbtauXbox,timeslice);
            Result.set(Xbox,currenttime);
            // resetting the time step 
 	   tsteps=cst_tsteps;
+	   
+ 	   // display
+	   if (currenttime>= next_fig) {
+               next_fig+=fig_step;
+               if (fig) {
+//                  std::cout << "drawing " << *pr << actStates << "\n";
+                  fig->draw_polygon(actStates.over_polygon(*pr),"blue");
+	       }
+	   }
 	   inflation_f=default_inflation_factor;
+           nb_tries=0;
        }
+       return actStates;
+  }
+  
+  ///// forward differential inclusion X' = f(X,t)
+  TubeVector DiffInclusion::fwd_inclusion(const IntervalVector& frame, 
+                               const IntervalVector& X0,
+                               VIBesFig *fig,
+                               const Matrix *pr,
+                               int nbsl)
+  {
+       assert(X0.dim()==dim);
+  
+#ifndef USE_IVPARALS
+       IVdouble actStates(X0); // actuel set of states
+#else
+       IVparals actStates(X0); // actuel set of states
+#endif
+
+       // result
+       TubeVector Result(time,frame);
+  
+       this->fwd_inclusion(frame, actStates,
+				Result,
+				time,
+				nbsteps,fig,pr,nbsl);
        return Result;
   }
 
@@ -473,10 +529,10 @@ namespace diffincl {
                                const IntervalVector& X0) {
       if (this->time_dependent) {
        return CAPD_integrateODE(this->time,*(this->tfun),X0,
-		this->time.diam()/this->nbsteps,10,
+		this->time.diam()/this->nbsteps,2,
 		this->time.diam()/this->nbsteps);
       } else {
-       return CAPD_integrateODE(this->time,*(this->fun),X0,this->time.diam()/this->nbsteps,10,
+       return CAPD_integrateODE(this->time,*(this->fun),X0,this->time.diam()/this->nbsteps,2,
 		this->time.diam()/this->nbsteps);
       }
    }
@@ -494,6 +550,7 @@ namespace diffincl {
        vector<IVparals> outDoors(2*dim,initParals);
        double tsteps = timesteps;
        double inflation_f = default_inflation_factor;
+       int nb_tries;
   
        IVparals actStates(X0); // actuel set of states
 //       IntervalVector Cent(X0.mid());
@@ -516,7 +573,7 @@ namespace diffincl {
            Interval timeslice(oldtime+timeShift,currenttime+timeShift);
            IntervalVector approxbox = 
   		this->extend_box_basic(box,Xbox,timeslice,inflation_f,
-				tsteps>=timesteps/4.0);
+				nb_tries);
            Vector center_Approxbox = approxbox.mid();
            IntervalMatrix ExpM(dim,dim);
            IntervalMatrix InvExpM(dim,dim);
@@ -547,13 +604,16 @@ namespace diffincl {
 */
            bbtauXbox &= box;
            if (!bbtauXbox.is_subset(approxbox)) {
-              if (debug_level>=3)
+//              if (debug_level>=8)
                 std::cerr << "Erreur tauXbox//approxbox !!!\n" 
                     << bbtauXbox << "  " << approxbox << " tsteps " <<
                        tsteps <<  " inf_f " << inflation_f << "\n\n";
 	      // trying a smaller time slice
-	      tsteps/=2.0;
-              inflation_f *= 1.3;
+              if (nb_tries>2) {
+	        tsteps/=1.4;
+                inflation_f *= 1.4;
+	      }
+              nb_tries++;
               continue;
            } 
 
@@ -582,6 +642,7 @@ namespace diffincl {
            // resetting the time step 
 	   tsteps=timesteps;
 	   inflation_f=default_inflation_factor;
+           nb_tries=0;
        }
        return outDoors;
   }

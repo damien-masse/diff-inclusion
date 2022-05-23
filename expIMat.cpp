@@ -2,8 +2,6 @@
 //  expIMat.cpp : exponential of interval matrices 
 ///////////////////////////////////////////////////////////////////////////
 
-#include <ibex_IntervalMatrix.h>
-#include <ibex_Matrix.h>
 #include <codac.h>
 #include "expIMat.h"
 

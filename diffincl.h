@@ -45,6 +45,11 @@ class DiffInclusion
        * number of variables (without time)
        */
       int get_dim() const;
+
+      /**
+       * predefined time interval
+       */
+      const Interval& get_time() const;
      
       /** evaluate function on box + time interval
        */
@@ -76,13 +81,15 @@ class DiffInclusion
        * @param frame : constraint on the set
        * @param Xbox : initial set of tates
        * @param tim : time interval
+       * @inflation_factor : inflation of the box
+       * @nb_tries : number of tries : if >0, extends even more...
        * TODO : how to customize the policy?
        */
       IntervalVector extend_box_basic
 		(const IntervalVector& frame, const IntervalVector& Xbox,
                  const Interval& tim, 
 		 double inflation_factor = default_inflation_factor,
-		 bool last_contraction=true);
+		 int nb_tries = 0);
 
 	// compute next step, from linear approximation and uncertainty
 	// fcent = f(center of the zone, half time)
@@ -124,7 +131,23 @@ class DiffInclusion
       // frame : global frame (no computation outside)
       // X0 : initial position
       TubeVector fwd_inclusion(const IntervalVector& frame, 
-	      	               const IntervalVector& X0);
+	      	               const IntervalVector& X0,
+			       VIBesFig *fig=NULL,
+                               const Matrix *pr=NULL,
+			       int nbsl=0);
+
+      ///// differential inclusion        X' = f(X)
+      // frame : global frame (no computation outside)
+      // already defined tube
+      // and precise time computation
+      IVparals fwd_inclusion(const IntervalVector& frame, 
+                               const IVparals& X0,
+			       TubeVector &Result,
+			       const Interval &ptime,
+			       unsigned int pnbsteps,
+                               VIBesFig *fig=NULL,
+                               const Matrix *pr=NULL,
+                               int nbsl=0);
 
       ///// CAPD differential inclusion        X' = f(X)
       // frame : global frame (no computation outside)
@@ -162,7 +185,7 @@ class DiffInclusion
       int debug_level = 3;
 
       /** inflation factor in extend_box_basic */
-      constexpr static double default_inflation_factor = 1.2; 
+      constexpr static double default_inflation_factor = 1.1; 
 
       IntervalMatrix* proj=NULL;
 };
@@ -172,6 +195,7 @@ class DiffInclusion
 
 namespace diffincl {
       inline int DiffInclusion::get_dim() const { return this->dim; }
+      inline const Interval& DiffInclusion::get_time() const { return this->time; }
 }
 
 #endif
