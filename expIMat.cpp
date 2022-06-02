@@ -3,6 +3,7 @@
 ///////////////////////////////////////////////////////////////////////////
 
 #include <codac.h>
+#include <cmath>
 #include "expIMat.h"
 
 using namespace codac;
@@ -210,12 +211,83 @@ void primSquaring_IntervalMatrix(IntervalMatrix& S,
 
 // 1) Inversion
 
+// matrix inversion
+// a) Res :=  A^(-1)Res   ( false if A is a singular matrix)
+bool inv_Matrix(const Matrix& A, Matrix& Res) {
+     Matrix M_copy(A);
+     const int order = A.nb_rows();
+     assert(order == A.nb_cols());
+     for (int col=0;col<order;col++) {
+        // looking for a line without 0, and largest absolute value
+        double best_val=0.0; int best_line=-1;
+        for (int lin=col;lin<order;lin++) {
+           if (fabs(M_copy[lin][col])>best_val) {
+             best_val=fabs(M_copy[lin][col]);
+             best_line=lin;
+           }
+        }
+        if (best_line==-1) { // singular
+            return false;
+        }
+        int lin = best_line;
+        for (int lin2=0;lin2<order;lin2++) {
+            if (lin2==lin) continue;
+            // transfer lines  to put M_copy[lin2][col] to 0
+            double fact = -M_copy[lin2][col]/M_copy[lin][col];
+            M_copy[lin2][col]=0.0;
+            for (int col2=col+1;col2<order;col2++) {
+                M_copy[lin2][col2] += fact*M_copy[lin][col2];
+            }
+            for (int col2=0;col2<order;col2++) {
+                Res[lin2][col2] += fact*Res[lin][col2];
+            }
+        }
+        // exchange line lin and line col
+        if (lin!=col) { 
+          {
+            Vector swp(M_copy[lin]);
+            M_copy[lin] = M_copy[col]; 
+            M_copy[col] = swp;
+          }
+          {
+            Vector swp(Res[lin]);
+            Res[lin] = Res[col]; 
+            Res[col] = swp;
+          }
+        }
+     }
+     // simplify to 1
+     for (int lin=0;lin<order;lin++) {
+         double rem = 1.0/M_copy[lin][lin];
+         Res[lin] *= rem;
+    } 
+    return true;
+}
+
 // matrix inversion, crude Gaussian elimination using Rows
 // returns empty if [M] may contains a singular matrix (finding a subset
 // of M would be useful...)
 IntervalMatrix inv_IntervalMatrix(const IntervalMatrix& M) {
      IntervalMatrix Res (Matrix::eye (M.nb_rows()));
      inv_IntervalMatrix(M,Res);
+     return Res;
+}
+
+// other matrix inversion, using approximate inverse on the mid of the
+// matrix
+IntervalMatrix inv_IntervalMatrix2(const IntervalMatrix &M) {
+     Matrix Mid= M.mid();
+     Matrix IMid= Matrix::eye(M.nb_rows());
+     if (!inv_Matrix(Mid,IMid)) {
+            return IntervalMatrix::empty(M.nb_rows(),M.nb_rows());
+     }
+     std::cout << "Mid : " << Mid << "\nIMid : " << IMid << "\nProd : " << (Mid*IMid) << "\n";
+     IntervalMatrix Res(IMid);
+     IntervalMatrix tmp=Res*M;
+     std::cout << "IMid*M : " << tmp << "\n";
+     Res = Matrix::eye(M.nb_rows());
+     inv_IntervalMatrix(tmp,Res);
+     std::cout << "Res : " << Res << "\n*IMid : " << Res*IMid << "\n";
      return Res;
 }
 
@@ -227,6 +299,7 @@ void inv_IntervalMatrix(const IntervalMatrix& A,
 					IntervalMatrix& Res) {
      IntervalMatrix M_copy(A);
      const int order = A.nb_rows();
+     assert(order == A.nb_cols());
      for (int col=0;col<order;col++) {
         // looking for a line without 0, and smallest diam/mignitude
         double best_ratio; int best_line=-1;

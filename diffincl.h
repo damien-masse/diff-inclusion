@@ -55,20 +55,28 @@ class DiffInclusion
        */
       const IntervalVector teval_vector(const Interval &tim,
                  const IntervalVector& cdom);
+      const IntervalVector teval_vector(const Interval &tim,
+                 const IVparals& cdom);
       /** evaluate function on box + time
        */
       const IntervalVector teval_vector(double tim,
                  const IntervalVector& cdom);
+      const IntervalVector teval_vector(double tim,
+                 const IVparals& cdom);
       /** evaluate function on point + time
        */
       const IntervalVector teval_vector(double tim,
                  const Vector& cdom);
+
 
       /** compute the jacobian ; 
        * in case of time dependency, tvec is the first 
        * column of the jacobian	(dfun / dt), the return is the rest
        */
       IntervalMatrix jacobian(const IntervalVector& codom,
+                 const Interval& tdom,
+                 IntervalVector& tvec);
+      IntervalMatrix jacobian(const IVparals& codom,
                  const Interval& tdom,
                  IntervalVector& tvec);
 
@@ -85,8 +93,8 @@ class DiffInclusion
        * @nb_tries : number of tries : if >0, extends even more...
        * TODO : how to customize the policy?
        */
-      IntervalVector extend_box_basic
-		(const IntervalVector& frame, const IntervalVector& Xbox,
+      IVparals extend_box_basic
+		(const IntervalVector& frame, const IVparals& startIV,
                  const Interval& tim, 
 		 double inflation_factor = default_inflation_factor,
 		 int nb_tries = 0);
@@ -111,6 +119,24 @@ class DiffInclusion
                          IntervalMatrix& invExpM,
                          IntervalVector& tauCent,
                          IntervalMatrix& tauProdExpM);
+
+
+      /** try one step of computation, may fail
+       *  constraint : external frame (cannot grow bigger)
+       *  actState : actual point 
+       *  tauState : actual approxBox (may be modified)
+       *  finState : final states (to be computed)
+       *  tsteps : elapsed time
+       *  outDoors : to compute exits from the box
+       *  returns false : tauState fails, need a new one. finState not modified
+       *  returns true :  success, tauState minimized, finState modified
+       */ 
+      bool compute_step(const IntervalVector& frame,
+			const IVparals& actState,
+			IVparals& tauState,
+			IVparals& finState,
+			const Interval& timeslice,
+			vector<IVparals> *outDoors);
 
 
       void fwd_step(const IntervalVector& constraint,
@@ -185,7 +211,8 @@ class DiffInclusion
       int debug_level = 3;
 
       /** inflation factor in extend_box_basic */
-      constexpr static double default_inflation_factor = 1.1; 
+      constexpr static double default_inflation_factor = 1.01; 
+      constexpr static int narrow_factor = 3;
 
       IntervalMatrix* proj=NULL;
 };

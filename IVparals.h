@@ -1,5 +1,5 @@
 ///////////////////////////////////////////////////////////////////////
-//  IVparals.h : representation of polyheron as C + inter M_i X_i
+//  IVparals.h : representation of polyhedron as C + inter M_i X_i
 ///////////////////////////////////////////////////////////////////////
 
 #ifndef __IVPARAL_H__
@@ -8,7 +8,6 @@
 #include <iostream>
 #include <vector>
 #include <codac.h>
-//#include <IVdouble.h>
 
 using namespace codac;
 
@@ -71,6 +70,12 @@ class IVparals
        */
       void recenter(const Vector& nCent);
 
+
+      /**
+       * ``middle'' (e.g. center of the bounding box ?
+       */
+      Vector mid() const;
+
       /**
        * union (keep the actual matrices)
        */
@@ -80,7 +85,7 @@ class IVparals
        * intersection (keeping the actual matrices)
        */
       void intersect_with(const IntervalVector& iv);
-      void intersect_with(const IVparals& iv);
+      void intersect_with(/* const */IVparals& iv);
 
        /**
         * intersection with quasi-linear constraints [M][X]=[Y] 
@@ -103,6 +108,12 @@ class IVparals
       bool join_intersect_with
 		(const IVparals& iv, 
 		 const IntervalVector& box, int d, double val);
+
+      /**
+       * relative distance, fast (with same base) 
+       * max of the distance of each box
+       */
+       double rel_distance_fast(const IVparals& iv) const;
  
       /**
        * union with 
@@ -117,7 +128,7 @@ class IVparals
       /**
        * intersection with the bound of an interval vector
        */
-      bool intersect_with(const IntervalVector& iv, int d, double val);
+      bool intersect_with(/* const */ IntervalVector& iv, int d, double val);
 
       /** is_empty
        */
@@ -127,11 +138,17 @@ class IVparals
        */
       IntervalVector bounding_box() const;
 
-
       /** contains point
        * (approximate...)
        */
       bool contains(const Vector& iv) const;
+
+      /** is subset, **with the same base** */
+      bool is_subset_fast(const IVparals& iv) const;
+
+      /** expansion form a bigger set, **with the same base** */
+      /* this |= this+(iv-this)*fact */
+      void inflate_from_base_fast(const IVparals& iv, double fact);
 
       /** multiply by a new matrix, and add 
        *  M : the new matrix, IM its inverse
@@ -150,6 +167,9 @@ class IVparals
       void cmult_and_add2(const Vector&center,
 		const IntervalMatrix& M, const IntervalMatrix &invM,
 		const IntervalVector& V);
+
+      /** cone-addition, with retur (keep matrices and center) */
+      friend IVparals tau_add(const IVparals& iv, const IntervalVector& V);
 
       /** tau-centered multiply and add (not modifying the matrices)
        * IV = IV + [0,1]*(M (IV-center) + V)
@@ -186,12 +206,19 @@ class IVparals
        */
       ConvexPolygon over_polygon(const Matrix& M) const;
 
+      /** operations */
+      friend IVparals operator+(const IVparals& ivp, 
+				const IntervalVector& iv);
+      friend IVparals operator-(const IVparals& ivp, 
+				const IntervalVector& iv);
+      friend IVparals operator+(const IVparals& iv, const Vector& v);
+      friend IVparals operator-(const IVparals& iv, const Vector& v);
+      friend IntervalVector operator*(const IntervalMatrix& M, 
+				const IVparals& iv);
+
       /** display
        */
       friend std::ostream& operator<<(std::ostream& str, const IVparals& iv);
-
-
-    
 
 
     private:

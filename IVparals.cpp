@@ -75,6 +75,11 @@ namespace diffincl {
        this->rhs[this->nbmat] += vect;
    }
 
+   Vector IVparals::mid() const {
+       /* FIXME : can we get something better? */
+       return (this->bounding_box()).mid();
+   }
+
    void IVparals::join_with(const IVparals& iv) {
         if (iv.is_empty()) return;
         if (this->isempty) {
@@ -106,11 +111,19 @@ namespace diffincl {
 
    void IVparals::intersect_with(const IntervalVector& iv) {
         if (this->isempty) return;
-        IntervalVector bb = this->bounding_box();
-	bb &= (iv-this->center);
-	this->rhs[this->nbmat] = bb;
+	this->rhs[this->nbmat] &= (iv-this->center);
         this->simplify(true);
    }
+
+   double IVparals::rel_distance_fast(const IVparals& iv) const {
+        double a=0;
+	for (int i=0;i<this->nbmat;i++) {
+           double b= this->rhs[i].rel_distance(iv.rhs[i]);
+           if (a<b) a=b;
+        }
+	return a;
+   }
+
 
 /*
    void IVparals::intersect_with(const IntervalVector& iv, int d, double val) {
@@ -127,7 +140,7 @@ namespace diffincl {
         }
    }
 */
-   void IVparals::intersect_with(const IVparals& ivp) {
+   void IVparals::intersect_with(/* const */ IVparals& ivp) {
         // TODO : intersection with the different elements
 	this->intersect_with(ivp.bounding_box());
    }
@@ -181,6 +194,22 @@ namespace diffincl {
         }
         this->simplify(true);
    }
+
+   void IVparals::inflate_from_base_fast(const IVparals& iv, double fact) {
+        assert(this->nbmat==iv.nbmat);
+        for (int i=0;i<=this->nbmat;i++) {
+            IntervalVector& a = this->rhs[i];
+            const IntervalVector& b = iv.rhs[i];
+            for (int j=0;j<dim;j++) {
+	        double mn = fact*(b[j].lb() - a[j].lb());
+                if (mn>0) mn=0.0;  
+	        double mx = fact*(b[j].ub() - a[j].ub());
+                if (mx<0) mx=0.0;
+	        Interval ev(mn,mx);
+	        a[j] += ev;
+            }
+        }
+    }
 
 
    bool IVparals::join_intersect_with(const IVparals& iv,
@@ -297,6 +326,14 @@ namespace diffincl {
        return true;
    }
 
+   bool IVparals::is_subset_fast(const IVparals& iv) const {
+       assert(this->nbmat==iv.nbmat);
+       for (int i=0;i<=this->nbmat;i++) {
+          if (!this->rhs[i].is_subset(iv.rhs[i])) return false;
+       }
+       return true;
+   }
+
 
 
 
@@ -376,6 +413,7 @@ namespace diffincl {
        IntervalVector mCenter = center+V+M*(this->center-center);
        this->center = mCenter.mid();
        IntervalVector nV = mCenter - this->center;
+#if 0
        // the multiplication
        vector<IntervalVector> vRes(this->nbmat+1-this->nbNcst);
        IntervalVector Z(this->dim,Interval::zero());
@@ -411,9 +449,17 @@ namespace diffincl {
        this->rhs[this->nbmat] = 
 	hadamard_product(MD[this->nbmat-this->nbNcst],this->rhs[this->nbmat])
 		+vRes[this->nbmat-this->nbNcst];
+//        this->rhs[this->nbmat] = M*this->rhs[this->nbmat];
     //   this->rhs[this->nbmat] &= Z;
        for (int i=0;i<this->nbNcst;i++) {
+           IntervalMatrix MProd(this->Imats[i]);
            this->Imats[i] = this->Imats[i] * IM;
+           IntervalVector Mbla(dim);
+           for (int j=0;j<MProd.nb_rows();j++) {
+                Mbla[j]=MProd[j][j];
+                MProd[j][j] = Interval::zero();
+           }
+           this->rhs[i] &= hadamard_product(Mbla,this->mats[i]*this->rhs[i]) + MProd*this->rhs[nbmat];
            this->mats[i] = M * this->mats[i];
 //           this->rhs[i] = this->rhs[i]+(this->Imats[i]*nV);
        }
@@ -422,16 +468,102 @@ namespace diffincl {
 	      hadamard_product(MD[i-this->nbNcst],this->rhs[i])
 		+vRes[i-this->nbNcst];
        }
-       this->simplify(false); // needed
+#else    /** new algorithm **/
+       for (int i=this->nbNcst;i<this->nbmat;i++) { /* for each unchanging
+							matrices */
+           IntervalMatrix ImpM = this->Imats[i]*M;
+           IntervalVector newRhs((ImpM*this->mats[i])*this->rhs[i]);
+			/* basic modification. */
+           for (int j=0;j<this->nbNcst;j++) {
+	      /* computing  Imats[i]*M*mats[j] / Imats[i]*mat[j]
+				(componentwise division) */
+	      IntervalMatrix R = ImpM*this->mats[j];
+	      IntervalMatrix denom = this->Imats[i]*this->mats[j];
+              for (int k=0;k<dim;k++) 
+	      for (int l=0;l<dim;l++) {
+   		if (denom[k][l].contains(0.0)) { R[k][l]=1.0; continue; }
+		R[k][l]/=denom[k][l];
+	      } 
+              R = R.mid();
+ 	      /* foreach column V of R */
+	      for (int k=0;k<dim;k++) {
+                /* compute X = V*rhs[i] */
+		IntervalVector X(dim);
+                for (int l=0;l<dim;l++) X[l] = R[l][k]*this->rhs[i][l];
+		/* compute K = ImpM- V*Imats[i] (line by line) */
+		IntervalMatrix K(ImpM);
+		for (int l=0;l<dim;l++) K[l]-=R[l][k]*this->Imats[i][l];
+		X += (K*this->mats[j])*this->rhs[j];
+		newRhs &= X;
+	      }
+           }
+           this->rhs[i]=newRhs;
+       }
+       /* case i=nbmat */
+       { 
+	   IntervalVector newRhs(M*this->rhs[nbmat]);
+	   for (int j=0;j<this->nbNcst;j++) {
+               IntervalMatrix R = M*this->mats[j];
+               IntervalMatrix& denom = this->mats[j]; 
+               for (int k=0;k<dim;k++) 
+	       for (int l=0;l<dim;l++) {
+   		 if (this->mats[j][k][l].contains(0.0)) 
+			{ R[k][l]=1.0; continue; }
+		 R[k][l]/=denom[k][l];
+	       } 
+               R = R.mid();
+ 	       /* foreach column V of R */
+	       for (int k=0;k<dim;k++) {
+                 /* compute X = V*rhs[nbmat] */
+		 IntervalVector X(dim);
+                 for (int l=0;l<dim;l++) X[l] = R[l][k]*this->rhs[nbmat][l];
+ 		 /* compute K = M-V*Id (line by line) */
+		 IntervalMatrix K(M);
+		 for (int l=0;l<dim;l++) K[l][l]-=R[l][k];
+		 X += (K*this->mats[j])*this->rhs[j];
+		 newRhs &= X;
+	       }
+            }
+            this->rhs[nbmat]=newRhs;
+       }
+       /* modified matrices */
+       for (int i=0;i<this->nbNcst;i++) {
+           IntervalMatrix MProd(this->Imats[i]);
+           this->Imats[i] = this->Imats[i] * IM;
+/*
+           IntervalVector Mbla(dim);
+           for (int j=0;j<MProd.nb_rows();j++) {
+                Mbla[j]=MProd[j][j];
+                MProd[j][j] = Interval::zero();
+           }
+           this->rhs[i] &= hadamard_product(Mbla,this->mats[i]*this->rhs[i]) + MProd*this->rhs[nbmat];
+*/
+           this->mats[i] = M * this->mats[i];
+//           this->rhs[i] = this->rhs[i]+(this->Imats[i]*nV);
+       }
+#endif
+       this->simplify(true); // absolutely needed
 //       std::cout << nV << "\n" << vRes[this->nbmat-this->nbNcst] << "\n" << this->rhs[this->nbmat] << "\n";
 
        this->rhs[this->nbmat] +=  nV;
-       for (int i=0;i<this->nbNcst;i++) {
+       for (int i=0;i<this->nbmat;i++) {
            this->rhs[i] = this->rhs[i]+(this->Imats[i]*nV);
        }
 
-       this->simplify(true); // needed
+//       this->simplify(true); // needed
 //       std::cout << this->rhs[1] << "\n" << this->mats[0] << "\n" << this->Imats[0] << "\n" << this->rhs[0] << "\n";
+   }
+
+
+   IVparals tau_add(const IVparals& iv, const IntervalVector& V) {
+       IVparals res(iv);
+       Interval Tau(0.0,1.0);
+       for (int i=0;i<res.nbmat;i++) {
+	  res.rhs[i] += Tau*(res.Imats[i]*V);
+       }  
+       res.rhs[res.nbmat] += Tau*V;
+       res.simplify(true);
+       return res;
    }
 
    void IVparals::ctau_mult_and_add
@@ -443,26 +575,27 @@ namespace diffincl {
        Interval Tau(0.0,1.0);
        for (int i=0;i<this->nbmat;i++) {
          this->rhs[i] += Tau*((this->Imats[i]*M*this->mats[i])*this->rhs[i]
-			+(this->Imats[i]*M)*(this->center-center+V));
+			+(this->Imats[i]*M)*(this->center-center)
+			+this->Imats[i]*V);
        }
-       this->rhs[this->nbmat] += Tau*(M*(this->rhs[this->nbmat]+this->center-center+V));
+       this->rhs[this->nbmat] += Tau*(M*(this->rhs[this->nbmat]+this->center-center)+V);
        this->simplify(true);
    }
  
    void IVparals::simplify(bool bwd) {
      if (this->isempty) return;
      /* FIXME : make something for more than one dimension */
-//     for (int i=0;i<=3;i++) {
+     for (int i=0;i<=3;i++) {
        this->rhs[1] &= this->mats[0] * this->rhs[0];
        this->rhs[0] &= this->Imats[0] * this->rhs[1];
        if (this->rhs[0].is_empty() ||
            this->rhs[1].is_empty())  { this->rhs[1].set_empty(); 
 				     this->isempty=true; }
-//     }
 
      if (bwd) {
-       bwd_mul(this->rhs[1],this->mats[0],this->rhs[0],0.0001);
-       bwd_mul(this->rhs[0],this->Imats[0],this->rhs[1],0.0001);
+       bwd_mul(this->rhs[0],this->Imats[0],this->rhs[1],1e-4);
+       bwd_mul(this->rhs[1],this->mats[0],this->rhs[0],1e-4);
+     }
      }
 
    }
@@ -507,6 +640,22 @@ namespace diffincl {
        }
        return res; 
    }
+   
+   IVparals operator-(const IVparals& iv, const Vector& v) {
+      IVparals res(iv);
+      res.center -=v; /* FIXME : not exact? */
+      return res;
+   }
+
+   IntervalVector operator*(const IntervalMatrix& M, const IVparals& iv) {
+       IntervalVector res = M*(iv.center + iv.rhs[iv.nbmat]);
+       for (int i=0;i<iv.nbmat;i++) {
+           IntervalMatrix MP = M*iv.mats[i];
+           res &= MP*(iv.rhs[i]+iv.Imats[i]*iv.center);
+       }
+       return res;
+   }
+      
 
    std::ostream& operator<<(ostream& str, const IVparals& iv) {
        if (iv.isempty) { str << "IVparals : empty\n" << flush; return str; }

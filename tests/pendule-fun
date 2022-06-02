@@ -1,5 +1,5 @@
 dim := 2
 timedependent := n
-time := [0,10]
+time := [0,20]
 function := (x,y) : (y,-0.3*y-sin(x)+[-0.02,0.02])
 nbsteps := 4096

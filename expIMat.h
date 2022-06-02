@@ -68,11 +68,19 @@ void primSquaring_IntervalMatrix(IntervalMatrix& S,
 /** 1) Inversion **/
 
 /**
+*    approximative matrix inversion. (Res := A^(-1) Res )
+*    modify the (approximate) inverse matrix, returns true if 
+*    successful false if failed (singular?)
+*/
+bool inv_Matrix(const Matrix& A, Matrix& Res);
+
+/**
 *    matrix inversion, crude Gaussian elimination using Rows
 *    returns empty if [M] may contains a singular matrix (finding a subset
 *    of M would be useful...)
 */
 IntervalMatrix inv_IntervalMatrix(const IntervalMatrix& M);
+IntervalMatrix inv_IntervalMatrix2(const IntervalMatrix& M);
 
 /** 2) Res :=  A^(-1)Res   ( empty if A contains a singular matrix) 
 *   (still crude Gaussian elimination using Rows)
