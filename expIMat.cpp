@@ -839,8 +839,8 @@ void add_int_absL (int dim, Matrix& Res,
 
     
 
-const double mnorm = 1e-3;
-const int nbitbase = 3;
+double mnorm = 0.025;
+int nbitbase = 5;
 void global_exp(const IntervalMatrix& M,
           double tim, bool with_slices, bool with_time,
           IntervalMatrix& expM,
@@ -854,7 +854,7 @@ void global_exp(const IntervalMatrix& M,
 {
      double a =1.0;
      int l=0;
-     double objnorm = infinite_norm(M)/mnorm;
+     double objnorm = infinite_norm(tim*M)/mnorm;
      int dim = M.nb_rows();
      Matrix Id = Matrix::eye (dim);
      IntervalMatrix MId (Id);
@@ -864,6 +864,7 @@ void global_exp(const IntervalMatrix& M,
        a = a/2.0;
        l = l+1;
      }
+//     std::cout << "l : " << l << "\n";
      IntervalMatrix MS = a*tim*M;
      global_exp_base(MS,l/2+nbitbase,with_slices,with_time,
 	expM,invExpM,tauExpM,IexpM,tauIexpM, VexpM, tauVexpM);

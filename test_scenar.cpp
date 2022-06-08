@@ -73,7 +73,7 @@ void goniometric(IVparals& actval,
     }
     std::cout << "M : " << M << "\n";
     std::cout << "V : " << V << "\n";
-    actval.intersect_with(M,av.mid(),V);
+    actval.meetLM(M,av.mid(),V,true);
 
 }
 		

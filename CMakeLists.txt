@@ -51,7 +51,7 @@
 
 # Executables
 set(LIBS diff_inclusion)
-set(EXECS test_scenar test_equadiff)
+set(EXECS test_scenar test_equadiff test_expmat)
 
 # Compilation
 

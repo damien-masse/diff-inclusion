@@ -90,6 +90,10 @@ void inv_IntervalMatrix(const IntervalMatrix& A,
 
 /** C) Matrix exponential (minus Id) **/
 
+/* tuning constants */  
+extern double mnorm;
+extern int nbitbase;
+
 /** 1) Horner scheme **/
 
 /**

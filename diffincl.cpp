@@ -174,16 +174,16 @@ namespace diffincl {
       Interval btime(0.0,tstep);
       /* estimation des pentes */
       IntervalVector k1 = this->teval_vector(tim.lb(),startIV);
-      IVparals XB1 = tau_add(startIV,(tstep/2.0)*k1);
+      IVparals XB1 = sum_tau(startIV,(tstep/2.0)*k1);
       IntervalVector k2 = this->teval_vector(tim.mid(), XB1);
-      XB1 = tau_add(XB1,(tstep/2.0)* k2);
+      XB1 = sum_tau(XB1,(tstep/2.0)* k2);
       IntervalVector k3 = this->teval_vector(tim.ub(), XB1);
       /* compute approximation of the result */
-      IVparals Res = tau_add(startIV,
+      IVparals Res = sum_tau(startIV,
 			(tstep*0.505)* ((k1|k2) + (k2|k3)));
 
 //      cout << Res << "\n" << tim << "\n";
-      Res.intersect_with(frame);
+      Res&=frame;
 //    cout << Res << "   ";
       if (nb_tries==0) return Res;
       /* inflation */
@@ -192,8 +192,8 @@ namespace diffincl {
 //      if (nb_tries<3) {
         double ifact = nb_tries==0 ? 1.0 : inflation_factor;
         if (nb_tries==2) ifact *= inflation_factor;
-        Res = tau_add(startIV, (ifact * btime) * (this->teval_vector(tim,Res)));
-        Res.intersect_with(frame);
+        Res = sum_tau(startIV, (ifact * btime) * (this->teval_vector(tim,Res)));
+        Res&=frame;
  //     } 
       return Res;
   }
@@ -269,10 +269,10 @@ namespace diffincl {
 //			"\ntauExpM " << tauExpM << "\ntauCent " << tauCent << "\n";
            ntauState.ctau_mult_and_add(cent_tauState,tauExpM,tauCent);
 
-           if (ntauState.is_subset_fast(tauState)) {
+           if (ntauState.is_subsetFast(tauState)) {
 	      reducing=true;
 //              cout << "plus petit " << nb_red << " " << ntauState << "\t" << tauState << "\n";
-              if (tauState.rel_distance_fast(ntauState)<1e-5) ok=true;
+              if (tauState.rel_distanceFast(ntauState)<1e-5) ok=true;
 				/* FIXME : select a value for rel_distance */
 				/* maybe dependent on the computation */
 	      tauState=ntauState;
@@ -297,7 +297,7 @@ namespace diffincl {
               nb_enl++; 
               if (nb_enl==narrow_factor) return false; 	
 			/* FIXME : narrow_factor is arbitrary */
-              tauState.inflate_from_base_fast(ntauState,default_inflation_factor);
+              tauState.inflate_from_baseFast(ntauState,default_inflation_factor);
            }
            if (reducing) {
 	      /* compute doors */
@@ -621,6 +621,8 @@ namespace diffincl {
 //                  std::cout << "drawing " << *pr << actStates << "\n";
                   fig->draw_polygon(actStates.over_polygon(*pr),"blue");
 	       }
+               std::cout << "Time : " << currenttime << "  " << actStates << "\n";
+               actStates.toPointMatrices();
 	   }
 	   inflation_f=default_inflation_factor;
            okreduced=false;
@@ -737,7 +739,7 @@ namespace diffincl {
 
 	   actStates=nextStates;
            oldtime=currenttime;
- 	   actStates.intersect_with(box);
+ 	   actStates &= box;
 	   // Computation of Xbox (for the tube)
            Xbox = actStates.bounding_box();
 	   Xbox &= box;
