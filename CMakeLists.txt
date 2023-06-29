@@ -51,12 +51,14 @@
 
 # Executables
 set(LIBS diff_inclusion)
-set(EXECS test_scenar test_equadiff test_expmat)
+set(EXECS test_equadiff test_expmat)
 
 # Compilation
 
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 foreach(LIB1 ${LIBS})
-  add_library(${LIB1} STATIC expIMat.cpp IVdouble.cpp IVparals.cpp diffincl.cpp)
+  add_library(${LIB1} STATIC diffincl.cpp)
   target_include_directories(${LIB1} PUBLIC ${CODAC_INCLUDE_DIRS} ${EIGEN3_INCLUDE_DIRS} ${PKG_CAPD_INCLUDE_DIRS})
   target_compile_options(${LIB1} PUBLIC ${CODAC_CFLAGS} ${PKG_CPAD_CFLAGS})
   target_link_libraries(${LIB1} ${CODAC_LIBRARIES} Ibex::ibex ${PKG_CAPD_LDFLAGS} /home/damien/Recherche/invariant-lib/ibex-lib/filibsrc/libprim.a)

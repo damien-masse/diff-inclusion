@@ -81,26 +81,36 @@ IntervalMatrix quad_Mtau(const IntervalMatrix& M, double a) {
 IntervalMatrix quad_MM(const IntervalMatrix& M, const IntervalMatrix& A) {
    const int n = M.nb_rows();
    IntervalMatrix Res(n,n,Interval::ZERO);
+   IntervalMatrix Res2(n,n,Interval::ZERO);
    for (int k=0;k<n;k++) {
       for (int i=0;i<n;i++) {
          if (i==k) continue;
          for (int j=0;j<n;j++) {
              if (j==k) continue;
              Res[i][j] += M[i][k]*(M[k][j]+A[k][j]);
+             Res2[i][j] += (M[i][k]+A[i][k])*M[k][j];
          }
       }
    }
    for (int i=0;i<n;i++)
    for (int j=0;j<n;j++) {
       if (i==j) {
-         Res[i][i] += quad_II(M[i][i],A[i][i]);
+         Interval u = quad_II(M[i][i],A[i][i]);
+         Res[i][i] += u;
+         Res2[i][i] += u;
       } else {
          Interval c = M[j][j]+A[j][j];
-         Interval a1 = M[i][j]*((M[i][i]).lb()+c)+(M[i][i]).lb()*A[i][j];
-         Interval a2 = M[i][j]*((M[i][i]).ub()+c)+(M[i][i]).ub()*A[i][j];
+         Interval clb = (M[i][i]).lb() + c;
+         Interval cub = (M[i][i]).ub() + c;
+         Interval a1 = M[i][j]*clb+(M[i][i]).lb()*A[i][j];
+         Interval a2 = M[i][j]*cub+(M[i][i]).ub()*A[i][j];
          Res[i][j] += (a1|a2);
+         Interval b1 = M[j][i]*clb+(M[i][i]).lb()*A[j][i];
+         Interval b2 = M[j][i]*cub+(M[i][i]).ub()*A[j][i];
+         Res2[j][i] += (b1|b2);
       }
    }
+   Res &= Res2;
    return Res;
 }
       
@@ -714,11 +724,25 @@ void global_exp_base(const IntervalMatrix& A,
                     /* TODO : check, maybe optimize... */
        }
     }
+    /* computation of the ET (/A) */
+    baseErrorTerm *= 0.5*norm*norm; // NA^(k+1)/(k+1)!
+    Interval nET0 = baseErrorTerm*(k+3)/(k+2)/(k+3-norm);
+                      // NA^(k+1)/((k+2)! (1-norm/(k+3)))
     // IexpA
     IexpA = one6*quad_MM(A,3.0*Id+ExpA);
     // then ExpA
+    IntervalMatrix IdP = 2.0*Id;
+    IdP.inflate(2.0*nET0.ub());
+    IntervalMatrix ExpA1 = 0.5*quad_MM(A,IdP)+one6*sqA*(A+ExpA);
+    IntervalMatrix invExpA1 = 0.5*quad_MM(-A,IdP)+one6*sqA*(-A+invExpA);
+    nET0 *= norm;
     ExpA = 0.5*quad_M(A,2.0)+one6*sqA*(A+ExpA);
     invExpA = 0.5*quad_M(-A,2.0)+one6*sqA*(-A+invExpA);
+    ExpA.inflate(nET0.ub());
+    invExpA.inflate(nET0.ub());
+    ExpA&=ExpA1;
+    invExpA&=invExpA1;
+
     // tauIexpA if needed
     if (with_slices) {
       tauIexpA = one6*quad_MMtau(A,3.0*Id+tauExpA);
@@ -726,10 +750,8 @@ void global_exp_base(const IntervalMatrix& A,
     // then tauExpA
     tauExpA = 0.5*quad_Mtau(A,2.0)+Unt*one6*sqA*(A+tauExpA);
     // now we must add the error terms
-    baseErrorTerm *= 0.5*norm*norm; // NA^(k+1)/(k+1)!
-    Interval nET0 = baseErrorTerm*norm*(k+3)/(k+2)/(k+3-norm);
-    ExpA.inflate(nET0.ub());
-    invExpA.inflate(nET0.ub());
+//    ExpA.inflate(nET0.ub());
+//    invExpA.inflate(nET0.ub());
     tauExpA.inflate(nET0.ub());
     Interval nET1 = baseErrorTerm/(k+2-norm);
     IexpA.inflate(nET1.ub());

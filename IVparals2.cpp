@@ -8,7 +8,7 @@
 #include <vector>
 #include <cstdio>
 #include <cstring>
-#include "codac2_expIMat.h"
+// #include "expIMat.h"
 #include "IVparals.h"
 
 using namespace codac;
@@ -18,7 +18,7 @@ namespace diffincl {
   uint_fast64_t IVparals::matIdCnt=0;
 
   IVparals::IVparals(int dim) :
-      dim(dim), empty(true), nbmat(0), nbNcst(0), mats(), Imats(), matId(0), rhs(2)
+      dim(dim), empty(true), nbmat(1), nbNcst(1), mats(1,IntervalMatrix(dim,dim)), Imats(1,IntervalMatrix(dim,dim)), matId(0), rhs(2)
    {
        IntervalMatrix mA(dim,dim);
        mA = Matrix::eye(dim);

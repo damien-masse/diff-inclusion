@@ -17,11 +17,9 @@ using namespace diffincl;
 using namespace codac;
 
 void parse_command(const char *name,DiffInclusion& di, std::ifstream& input) {
-    char str[200], *token;
+    char str[50], *token;
     IntervalVector frame(di.get_dim());
     IntervalVector X0(di.get_dim());
-    IntervalVector uval(di.get_udim());
-    TFunction *ufun=NULL;
     
     while (!input.eof()) {
       str[0] = '\0';
@@ -43,32 +41,14 @@ void parse_command(const char *name,DiffInclusion& di, std::ifstream& input) {
               Interval a(v1,v2);
               X0[i] = a;
            }
-      } else if (strncasecmp(str,"uval",4)==0) {
-           for (int i=0;i<di.get_udim();i++) {
-              input >> str;
-              double v1=0.0,v2=0.0;
-              sscanf(str,"[%lg,%lg]",&v1,&v2);
-              Interval a(v1,v2);
-              uval[i] = a;
-           }
-      } else if (strncasecmp(str,"ufun",4)==0) {
-             assert(di.get_udim()>0);
-             input >> str;
-             std::cout << "ufun : " << str << "\n";
-             ufun = new TFunction(str);
       } else if (strcasecmp(str,"compute_fwd")==0) {
-            std::cout << "compute_fwd\n";
+            VIBesFig fig("Polygons");
+            Matrix projec(2,di.get_dim());
+            projec[0][0]=1.0; projec[0][1]=0.0;
+            projec[1][0]=0.0; projec[1][1]=1.0;
+            for (int i=2;i<di.get_dim();i++) projec[0][i]=projec[1][i]=0.0;
 
-            codac2::Tube<codac2::IParals> * Res2;
-            if (ufun!=NULL) {
-               Res2 = di.fwd_inclusion(frame,*ufun,X0,NULL,50);
-            } else { 
-               Res2 = di.fwd_inclusion(frame,(di.get_udim()==0?NULL:&uval),X0,NULL 
-	    /* ,&projec */
-   	    ,50);
-            }
-            std::cout << "termine " << *Res2 << "\n";
-            codac::TubeVector Result = to_codac1(*Res2);
+            TubeVector Result = di.fwd_inclusion(frame,X0,&fig,&projec,50);
     // FIXME : bounding boxes of tubes !!
 #if 0
     for (int j=0;j<=1;j++) {
@@ -78,36 +58,11 @@ void parse_command(const char *name,DiffInclusion& di, std::ifstream& input) {
     }
     }
 #endif
-           {
-              std::shared_ptr<codac2::Slice<codac2::IParals>> p = Res2->last_slice_ptr();
-              while (p!=NULL && !p->is_gate())
-                       p = p->prev_slice_ptr();
-              std::cout << "expo : " << *p << "\n";
-           }
            std::cout << "expo : " << (Result(di.get_time().ub())) << "\n";
            VIBesFigTubeVector VB(name);
            VB.add_tube(&Result, "resultat");
-
-           VIBesFig fig("Polygons");
-
-           Matrix projec(2,di.get_dim());
-           projec[0][0]=1.0; projec[0][1]=0.0;
-           projec[1][0]=0.0; projec[1][1]=1.0;
-           for (int i=2;i<di.get_dim();i++) projec[0][i]=projec[1][i]=0.0;
-           {
-               double a=di.get_time().lb();
-               std::shared_ptr<codac2::Slice<codac2::IParals>> p = Res2->first_slice_ptr();
-               while (a<=di.get_time().ub()) {
-                     while (p!=NULL && (!p->is_gate() || p->t0_tf().lb()<a))
-                       p = p->next_slice_ptr();
-                     if (p==NULL) break;
-                     fig.draw_polygon(p->codomain().over_polygon(projec), "blue");
-                     a=a+di.get_time().diam()/75.0;
-              }
-           }
     	   VB.show(true);
       } else if (strcasecmp(str,"capd_compute_fwd")==0) {
-#if 0
            TubeVector Result = di.capd_fwd_inclusion(frame,X0);
     // FIXME : bounding boxes of tubes !!
 #if 0
@@ -125,10 +80,8 @@ void parse_command(const char *name,DiffInclusion& di, std::ifstream& input) {
            VIBesFigTubeVector VB(namep);
            VB.add_tube(&Result, "resultat_capd");
     	   VB.show(true);
-#endif
       }
     }
-//    if (ufun!=NULL) delete(ufun);
 }
 
 int main(int argc, char *argv[]) {
